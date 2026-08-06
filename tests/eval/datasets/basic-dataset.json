@@ -1,0 +1,31 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "ai_ml_brief_request",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Generate my daily AI/ML intelligence brief focused on LLM agents and multimodal models."}]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [{"text": "Daily AI/ML Intelligence Brief"}]
+        }
+      }
+    },
+    {
+      "eval_case_id": "agent_research_query",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "What are the latest breakthroughs in agentic workflows and reasoning loops?"}]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [{"text": "Agentic Workflows"}]
+        }
+      }
+    }
+  ]
+}
+
