@@ -3,8 +3,7 @@ from google.adk.models import Gemini
 from google.genai import types
 from google.adk.agents.callback_context import CallbackContext
 from app.tools import redact_pii, RedactionInput
-
-MODEL = "gemini-3.6-flash"
+from app.config import FAST_MODEL
 
 async def redactor_callback(callback_context: CallbackContext):
     user_input = ""
@@ -24,7 +23,7 @@ async def redactor_callback(callback_context: CallbackContext):
 redactor_agent = Agent(
     name="redactor_agent",
     model=Gemini(
-        model=MODEL,
+        model=FAST_MODEL,
         retry_options=types.HttpRetryOptions(attempts=3),
     ),
     instruction="You are the Custom Redactor Agent. Your sole responsibility is to intercept user prompts and programmatically redact any personal identifiable information (PII) before passing the sanitized prompt to the security gatekeeper.",

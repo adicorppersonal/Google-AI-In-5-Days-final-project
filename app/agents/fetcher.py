@@ -3,8 +3,7 @@ from google.adk.models import Gemini
 from google.genai import types
 from google.adk.agents.callback_context import CallbackContext
 from app.tools import google_web_search, SearchInput
-
-MODEL = "gemini-3.6-flash"
+from app.config import FAST_MODEL
 
 async def fetcher_callback(callback_context: CallbackContext):
     # Ensure sanitized query is available in state or context for native tool usage
@@ -20,7 +19,7 @@ async def fetcher_callback(callback_context: CallbackContext):
 
 fetcher_agent = Agent(
     name="fetcher_agent",
-    model=Gemini(model=MODEL, retry_options=types.HttpRetryOptions(attempts=3)),
+    model=Gemini(model=FAST_MODEL, retry_options=types.HttpRetryOptions(attempts=3)),
     instruction="""You are the Fetcher Agent. You have access to the native tool `google_web_search`.
 1. Retrieve the search query from context or state (e.g. current query).
 2. Call the native `google_web_search` tool with explicit SearchInput parameters to fetch news and query vector memory.
