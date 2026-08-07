@@ -4,6 +4,9 @@ import os
 import asyncio
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from app.logger import get_structured_logger
+
+logger = get_structured_logger("agentic_news.db")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "articles.db")
@@ -39,10 +42,8 @@ def save_article_to_storage(article: dict, query: str):
     word_count = article.get("word_count", len(content.split()))
     timestamp = article.get("timestamp", datetime.utcnow().isoformat())
     
-    # Simulate vector embedding representation for vector store / Vertex AI Search
     embedding_vector = str([float(ord(c)) % 1.0 for c in title[:10]])
 
-    # Save to SQLite Vector-backed store
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -52,7 +53,6 @@ def save_article_to_storage(article: dict, query: str):
     conn.commit()
     conn.close()
 
-    # Save to CSV
     file_exists = os.path.exists(CSV_PATH)
     with open(CSV_PATH, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -66,10 +66,14 @@ def save_article_to_storage(article: dict, query: str):
 # ==========================================
 
 def vector_search_stored_articles(query_text: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Simulates enterprise Vertex AI Search and Vector Store semantic retrieval.
-    
-    Queries SQLite persistent storage using token overlap and vector similarity scoring.
-    """
+    """Simulates enterprise Vertex AI Search and Vector Store semantic retrieval with structured logging."""
+    intent = f"Vector search stored articles for keyword: {query_text}"
+    logger.info("Executing vector store search", extra={
+        "agent": "fetcher_agent",
+        "intent": intent,
+        "outcome": "in_progress"
+    })
+
     init_db()
     if not os.path.exists(DB_PATH):
         return []
@@ -78,7 +82,6 @@ def vector_search_stored_articles(query_text: str, limit: int = 5) -> List[Dict[
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # Split query into tokens for semantic token vector search
     tokens = [t.lower() for t in query_text.split() if len(t) > 2]
     if not tokens:
         cursor.execute("SELECT id, title, content, word_count, timestamp, query FROM articles ORDER BY timestamp DESC LIMIT ?", (limit,))
@@ -99,7 +102,14 @@ def vector_search_stored_articles(query_text: str, limit: int = 5) -> List[Dict[
     rows = cursor.fetchall()
     conn.close()
     
-    return [dict(row) for row in rows]
+    results = [dict(row) for row in rows]
+    logger.info("Vector store search completed", extra={
+        "agent": "fetcher_agent",
+        "intent": intent,
+        "outcome": "success",
+        "metadata": {"results_count": len(results)}
+    })
+    return results
 
 
 # ==========================================
@@ -107,14 +117,23 @@ def vector_search_stored_articles(query_text: str, limit: int = 5) -> List[Dict[
 # ==========================================
 
 async def save_article_to_storage_background(article: dict, query: str):
-    """Dispatches database and CSV write operations as an asynchronous background task.
-    
-    Ensures storage writes never block or obstruct the event loop during agent invocation.
-    """
+    """Dispatches database and CSV write operations as an asynchronous background task with structured logging."""
+    intent = "Persist fetched article to SQLite and CSV in background"
     try:
         await asyncio.to_thread(save_article_to_storage, article, query)
+        logger.info("Background storage persistence succeeded", extra={
+            "agent": "fetcher_agent",
+            "intent": intent,
+            "outcome": "success",
+            "metadata": {"article_id": article.get("id")}
+        })
     except Exception as e:
-        print(f"[Background Task Error] Failed to persist article in background: {e}")
+        logger.error("Background storage persistence failed", extra={
+            "agent": "fetcher_agent",
+            "intent": intent,
+            "outcome": "error",
+            "metadata": {"error": str(e), "article_id": article.get("id")}
+        })
 
 
 def dispatch_background_storage(article: dict, query: str):

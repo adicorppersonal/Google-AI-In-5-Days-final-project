@@ -5,6 +5,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import re
 from app.db import dispatch_background_storage, search_stored_articles_async, get_recent_articles_async
+from app.logger import get_structured_logger
+
+logger = get_structured_logger("agentic_news.tools")
 
 # ==========================================
 # 1. Explicit JSON Schemas (Pydantic Models)
@@ -57,8 +60,16 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
     """Performs a web search using simulated retrieval, queries vector-backed cross-session memory asynchronously,
     and dispatches storage writes as non-blocking background tasks (`asyncio.create_task`).
     
-    Includes explicit schema validation and guided error handling with recovery instructions.
+    Includes explicit schema validation, structured JSON logging, and guided error handling.
     """
+    intent = "Execute web search and retrieve vector memory articles"
+    logger.info("Starting web search tool execution", extra={
+        "agent": "fetcher_agent",
+        "intent": intent,
+        "outcome": "in_progress",
+        "metadata": {"input": str(input_data)}
+    })
+
     try:
         if isinstance(input_data, str):
             validated_input = SearchInput(query=input_data)
@@ -69,6 +80,12 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
         else:
             raise ValueError(f"Invalid input type: {type(input_data)}")
     except (ValidationError, ValueError) as e:
+        logger.error("Web search input validation failed", extra={
+            "agent": "fetcher_agent",
+            "intent": intent,
+            "outcome": "validation_error",
+            "metadata": {"error": str(e)}
+        })
         return SearchResult(
             status="error",
             query=str(input_data),
@@ -82,13 +99,11 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
         now = datetime.now(ZoneInfo("UTC")).isoformat()
         query = validated_input.query
         
-        # 1. Retrieve vector/Vertex AI search cross-session memory asynchronously if enabled
         memory_articles = []
         if validated_input.use_cross_session_memory:
             past_records = await search_stored_articles_async(keyword=query, limit=3)
             memory_articles = [ArticleMetadata(**rec) for rec in past_records]
 
-        # 2. Simulated web search retrieval
         search_results = [
             {
                 "id": f"web-{int(datetime.now().timestamp())}-1",
@@ -114,13 +129,24 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
                 "word_count": word_count,
                 "timestamp": art["timestamp"],
             }
-            # Dispatch storage write as an asynchronous background task (non-blocking)
             try:
                 dispatch_background_storage(article_data, query)
             except Exception as bg_err:
-                print(f"[Warning] Failed to dispatch background storage task: {bg_err}")
+                logger.warning("Failed to dispatch background storage task", extra={
+                    "agent": "fetcher_agent",
+                    "intent": "Dispatch background storage write",
+                    "outcome": "warning",
+                    "metadata": {"error": str(bg_err)}
+                })
             
             stored_articles.append(ArticleMetadata(**article_data))
+
+        logger.info("Web search tool execution completed successfully", extra={
+            "agent": "fetcher_agent",
+            "intent": intent,
+            "outcome": "success",
+            "metadata": {"query": query, "fetched_count": len(stored_articles), "memory_count": len(memory_articles)}
+        })
 
         result = SearchResult(
             status="success",
@@ -133,6 +159,12 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
         return result.model_dump()
 
     except Exception as exc:
+        logger.error("Web search tool execution failed", extra={
+            "agent": "fetcher_agent",
+            "intent": intent,
+            "outcome": "error",
+            "metadata": {"error": str(exc)}
+        })
         error_result = SearchResult(
             status="error",
             query=getattr(validated_input, 'query', 'unknown'),
@@ -145,7 +177,14 @@ async def google_web_search(input_data: SearchInput | Dict[str, Any] | str) -> D
 
 
 def redact_pii(input_data: RedactionInput | Dict[str, Any] | str) -> Dict[str, Any]:
-    """Programmatically redacts personal identifiable information (PII) from text with explicit schema validation."""
+    """Programmatically redacts personal identifiable information (PII) from text with structured JSON logging."""
+    intent = "Sanitize user input and redact PII"
+    logger.info("Starting PII redaction", extra={
+        "agent": "redactor_agent",
+        "intent": intent,
+        "outcome": "in_progress"
+    })
+
     try:
         if isinstance(input_data, str):
             validated_input = RedactionInput(text=input_data)
@@ -156,6 +195,12 @@ def redact_pii(input_data: RedactionInput | Dict[str, Any] | str) -> Dict[str, A
         else:
             raise ValueError(f"Invalid input type: {type(input_data)}")
     except (ValidationError, ValueError) as e:
+        logger.error("Redaction input validation failed", extra={
+            "agent": "redactor_agent",
+            "intent": intent,
+            "outcome": "validation_error",
+            "metadata": {"error": str(e)}
+        })
         return RedactionResult(
             sanitized_text="",
             pii_detected=False,
@@ -181,6 +226,13 @@ def redact_pii(input_data: RedactionInput | Dict[str, Any] | str) -> Dict[str, A
 
         pii_detected = (text != original_text)
 
+        logger.info("PII redaction completed", extra={
+            "agent": "redactor_agent",
+            "intent": intent,
+            "outcome": "success",
+            "metadata": {"pii_detected": pii_detected}
+        })
+
         return RedactionResult(
             sanitized_text=text,
             pii_detected=pii_detected,
@@ -189,6 +241,12 @@ def redact_pii(input_data: RedactionInput | Dict[str, Any] | str) -> Dict[str, A
         ).model_dump()
 
     except Exception as exc:
+        logger.error("PII redaction execution failed", extra={
+            "agent": "redactor_agent",
+            "intent": intent,
+            "outcome": "error",
+            "metadata": {"error": str(exc)}
+        })
         return RedactionResult(
             sanitized_text=getattr(validated_input, 'text', ''),
             pii_detected=False,
